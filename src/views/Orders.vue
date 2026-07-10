@@ -390,6 +390,8 @@
 </template>
 
 <script>
+import { supabase } from '../supabase'
+
 export default {
   name: 'Orders',
   data() {
@@ -408,13 +410,11 @@ export default {
       paymentMethodId: '',
       collectionTargetId: '',
 
-      // Customer search
       customerSearchQuery: '',
       showCustomerSuggestions: false,
       filteredCustomers: [],
       selectedCustomer: null,
 
-      // Auto-suggest product search
       itemSearchQuery: '',
       showItemSuggestions: false,
       filteredItems: [],
@@ -424,14 +424,12 @@ export default {
       itemsList: [],
       ordersHistory: [],
 
-      // Dynamic dropdowns
       channels: [],
       paymentMethods: [],
       collectionTargets: [],
       customers: [],
       items: [],
 
-      // Quick Add Modals
       quickAddType: null,
       quickAddForm: {
         code: '',
@@ -439,7 +437,6 @@ export default {
         type: 'direct'
       },
 
-      // Customer form
       customerForm: {
         tenant_id: 1,
         code: '',
@@ -473,11 +470,9 @@ export default {
       return this.subtotalAmount + this.taxAmount
     }
   },
-  mounted() {
-    this.fetchMasterData()
-    this.fetchOrdersHistory()
-
-    // Close suggestions dropdown when clicking outside
+  async mounted() {
+    await this.fetchMasterData()
+    await this.fetchOrdersHistory()
     document.addEventListener('click', this.handleClickOutside)
   },
   beforeUnmount() {
@@ -486,30 +481,40 @@ export default {
   methods: {
     async fetchMasterData() {
       try {
-        const [resCh, resPm, resCt, resIt, resCust] = await Promise.all([
-          this.$api.get('/channels/'),
-          this.$api.get('/payment-methods/'),
-          this.$api.get('/collection-targets/'),
-          this.$api.get('/items/'),
-          this.$api.get('/customers/')
+        const [
+          { data: channels },
+          { data: paymentMethods },
+          { data: collectionTargets },
+          { data: items },
+          { data: customers }
+        ] = await Promise.all([
+          supabase.from('erp_channels').select('*'),
+          supabase.from('erp_payment_methods').select('*'),
+          supabase.from('erp_collection_targets').select('*'),
+          supabase.from('erp_items').select('*'),
+          supabase.from('erp_customers').select('*')
         ])
-        this.channels = resCh.data
+
+        this.channels = channels || []
         if (this.channels.length > 0) this.channelId = this.channels[0].id
-        this.paymentMethods = resPm.data
+        
+        this.paymentMethods = paymentMethods || []
         if (this.paymentMethods.length > 0) this.paymentMethodId = this.paymentMethods[0].id
-        this.collectionTargets = resCt.data
+        
+        this.collectionTargets = collectionTargets || []
         if (this.collectionTargets.length > 0) this.collectionTargetId = this.collectionTargets[0].id
-        this.items = resIt.data
-        this.customers = resCust.data
+        
+        this.items = items || []
+        this.customers = customers || []
       } catch (err) {
         console.error('Failed to load master data:', err)
       }
     },
     async fetchOrdersHistory() {
       try {
-        const res = await this.$api.get('/orders/')
-        const orders = res.data
-        this.ordersHistory = orders.map(o => ({
+        const { data: orders, error } = await supabase.from('erp_orders').select('*').order('created_at', { ascending: false })
+        if (error) throw error
+        this.ordersHistory = (orders || []).map(o => ({
           ...o,
           channel_name: this.channels.find(c => c.id === o.channel_id)?.name || '',
           customer_name: o.customer_name || this.customers.find(c => c.id === o.customer_id)?.name || ''
@@ -528,35 +533,37 @@ export default {
     async shipOrder(id) {
       if (!confirm('確認出貨？DRAFT→SHIPPED，將扣除 FIFO 庫存')) return
       try {
-        await this.$api.post(`/orders/${id}/ship`)
+        const { error } = await supabase.from('erp_orders').update({ status: 'SHIPPED' }).eq('id', id)
+        if (error) throw error
         alert('出貨成功！')
         this.fetchOrdersHistory()
       } catch (err) {
-        alert('出貨失敗: ' + (err.response?.data?.detail || err.message))
+        alert('出貨失敗: ' + err.message)
       }
     },
     async cancelOrder(id) {
       if (!confirm('確認取消？DRAFT→CANCELLED')) return
       try {
-        await this.$api.post(`/orders/${id}/cancel`)
+        const { error } = await supabase.from('erp_orders').update({ status: 'CANCELLED' }).eq('id', id)
+        if (error) throw error
         alert('取消成功！')
         this.fetchOrdersHistory()
       } catch (err) {
-        alert('取消失敗: ' + (err.response?.data?.detail || err.message))
+        alert('取消失敗: ' + err.message)
       }
     },
     async returnOrder(id) {
       if (!confirm('確認退貨？SHIPPED→RETURNED，將退回 FIFO 庫存')) return
       try {
-        await this.$api.post(`/orders/${id}/return`)
+        const { error } = await supabase.from('erp_orders').update({ status: 'RETURNED' }).eq('id', id)
+        if (error) throw error
         alert('退貨成功！')
         this.fetchOrdersHistory()
       } catch (err) {
-        alert('退貨失敗: ' + (err.response?.data?.detail || err.message))
+        alert('退貨失敗: ' + err.message)
       }
     },
 
-    // Customer search methods
     onCustomerSearchInput() {
       if (!this.customerSearchQuery.trim()) {
         this.filteredCustomers = []
@@ -581,7 +588,6 @@ export default {
       this.selectedCustomer = null
     },
 
-    // Item search methods
     onItemSearchInput() {
       if (!this.itemSearchQuery.trim()) {
         this.filteredItems = []
@@ -634,7 +640,6 @@ export default {
       this.itemsList.splice(index, 1)
     },
 
-    // Quick Add
     openQuickAdd(type) {
       this.quickAddType = type
       if (type === 'channel') {
@@ -644,7 +649,6 @@ export default {
       } else if (type === 'collectionTarget') {
         this.quickAddForm = { tenant_id: 1, code: '', name: '', type: 'DIRECT' }
       } else if (type === 'customer') {
-        // Generate a new customer code
         const maxCode = this.customers.reduce((max, c) => {
           const num = parseInt(c.code.replace(/\D/g, '') || '0')
           return num > max ? num : max
@@ -671,28 +675,30 @@ export default {
       this.quickAddType = null
     },
     async submitQuickAdd() {
-      let endpoint = ''
-      if (this.quickAddType === 'channel') endpoint = 'channels'
-      if (this.quickAddType === 'paymentMethod') endpoint = 'payment-methods'
-      if (this.quickAddType === 'collectionTarget') endpoint = 'collection-targets'
+      let table = ''
+      if (this.quickAddType === 'channel') table = 'erp_channels'
+      if (this.quickAddType === 'paymentMethod') table = 'erp_payment_methods'
+      if (this.quickAddType === 'collectionTarget') table = 'erp_collection_targets'
 
       try {
-        const res = await this.$api.post(`/${endpoint}/`, this.quickAddForm)
-        const data = res.data
+        const { data, error } = await supabase.from(table).insert([this.quickAddForm]).select()
+        if (error) throw error
+        
         alert('快速新增成功！')
         await this.fetchMasterData()
 
-        if (this.quickAddType === 'channel') this.channelId = data.id
-        if (this.quickAddType === 'paymentMethod') this.paymentMethodId = data.id
-        if (this.quickAddType === 'collectionTarget') this.collectionTargetId = data.id
+        if (data && data.length > 0) {
+          if (this.quickAddType === 'channel') this.channelId = data[0].id
+          if (this.quickAddType === 'paymentMethod') this.paymentMethodId = data[0].id
+          if (this.quickAddType === 'collectionTarget') this.collectionTargetId = data[0].id
+        }
 
         this.closeQuickAdd()
       } catch (err) {
-        alert('新增失敗: ' + (err.response?.data?.detail || err.message))
+        alert('新增失敗: ' + err.message)
       }
     },
     generateCustomerCode(type) {
-      // 過濾同類型現有代碼
       const prefix = (type === 'RETAIL') ? 'M' : 'P'
       const digits = (type === 'RETAIL') ? 5 : 4
       const existing = this.customers
@@ -702,7 +708,6 @@ export default {
       return prefix + String(maxSeq + 1).padStart(digits, '0')
     },
     async submitCustomer() {
-      // 自動產生會員代號
       if (!this.customerForm.code) {
         this.customerForm.code = this.generateCustomerCode(this.customerForm.type || 'RETAIL')
       }
@@ -711,20 +716,21 @@ export default {
         return
       }
       try {
-        // 把空字串轉 null，避免 API int parsing 錯誤
         const payload = { ...this.customerForm }
         for (const key of Object.keys(payload)) {
           if (payload[key] === '') payload[key] = null
         }
         payload.channel_id = payload.channel_id ? parseInt(payload.channel_id) : null
-        const res = await this.$api.post('/customers/', payload)
-        const data = res.data
+        
+        const { data, error } = await supabase.from('erp_customers').insert([payload]).select()
+        if (error) throw error
+
         alert('會員新增成功！')
         await this.fetchMasterData()
-        this.selectCustomer(data)
+        if (data && data.length > 0) this.selectCustomer(data[0])
         this.closeQuickAdd()
       } catch (err) {
-        alert('新增失敗: ' + (err.response?.data?.detail || err.message))
+        alert('新增失敗: ' + err.message)
       }
     },
     async submitOrder() {
@@ -733,43 +739,62 @@ export default {
         return
       }
 
-      const payload = {
-        tenant_id: 1,
-        order_date: this.salesDate,
-        accounting_date: this.accountingDate || null,
-        channel_id: parseInt(this.channelId),
-        collection_target_id: parseInt(this.collectionTargetId),
-        payment_method_id: parseInt(this.paymentMethodId),
-        employee_id: this.employeeId || null,
-        department_id: this.departmentId || null,
-        project_id: this.projectId || null,
-        remarks: this.remarks || null,
-        customer_id: this.selectedCustomer ? this.selectedCustomer.id : null,
-        customer_name: this.selectedCustomer ? this.selectedCustomer.name : null,
-        customer_phone: this.selectedCustomer ? (this.selectedCustomer.phone || this.selectedCustomer.mobile) : null,
-        customer_address: this.selectedCustomer ? this.selectedCustomer.delivery_address : null,
-        items: this.itemsList.map(item => ({
-          item_id: item.item_id,
-          qty: parseFloat(item.qty),
-          unit_price: parseFloat(item.price)
-        }))
-      }
-
       try {
-        const res = await this.$api.post('/orders/', payload)
-        const result = res.data
-        alert('銷貨過帳成功！已扣除總倉 FIFO 庫存與認列銷貨收入。')
+        // 1. Insert Order
+        const orderPayload = {
+          tenant_id: 1,
+          order_no: 'SO-' + new Date().getTime(), // Generate a unique order_no
+          type: 'DIRECT_SALE',
+          order_date: this.salesDate,
+          accounting_date: this.accountingDate || null,
+          channel_id: parseInt(this.channelId),
+          collection_target_id: parseInt(this.collectionTargetId),
+          payment_method_id: parseInt(this.paymentMethodId),
+          employee_id: this.employeeId || null,
+          department_id: this.departmentId || null,
+          project_id: this.projectId || null,
+          remarks: this.remarks || null,
+          customer_id: this.selectedCustomer ? this.selectedCustomer.id : null,
+          customer_name: this.selectedCustomer ? this.selectedCustomer.name : null,
+          customer_phone: this.selectedCustomer ? (this.selectedCustomer.phone || this.selectedCustomer.mobile) : null,
+          customer_address: this.selectedCustomer ? this.selectedCustomer.delivery_address : null,
+          subtotal: this.subtotalAmount,
+          tax: this.taxAmount,
+          total: this.totalAmount,
+          status: 'DRAFT'
+        }
+
+        const { data: orderData, error: orderError } = await supabase.from('erp_orders').insert([orderPayload]).select()
+        if (orderError) throw orderError
+        
+        const orderId = orderData[0].id
+
+        // 2. Insert Order Items
+        const orderItemsPayload = this.itemsList.map(item => ({
+          order_id: orderId,
+          item_id: item.item_id,
+          item_code: item.sku,
+          item_name: item.name,
+          qty: parseFloat(item.qty),
+          unit_price: parseFloat(item.price),
+          subtotal: parseFloat(item.qty) * parseFloat(item.price)
+        }))
+
+        const { error: itemsError } = await supabase.from('erp_order_items').insert(orderItemsPayload)
+        if (itemsError) throw itemsError
+
+        alert('銷貨儲存成功！(草稿)')
         this.itemsList = []
         this.selectedCustomer = null
-        // orderNo 由後端自動產生，前端不用管
         this.fetchOrdersHistory()
       } catch (err) {
-        alert('過帳失敗: ' + (err.response?.data?.detail || err.message))
+        alert('過帳失敗: ' + err.message)
       }
     }
   }
 }
 </script>
+
 
 <style scoped>
 .btn-link {
