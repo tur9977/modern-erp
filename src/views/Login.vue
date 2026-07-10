@@ -17,14 +17,12 @@
         </button>
         <p v-if="error" class="error-message">{{ error }}</p>
       </form>
-      <p class="hint">測試帳號: ADMIN / password123</p>
+        <p class="hint">測試帳號: neal / tur872104</p>
     </div>
   </div>
 </template>
 
 <script>
-import { supabase } from '../supabase'
-
 export default {
   name: 'Login',
   data() {
@@ -38,21 +36,18 @@ export default {
     async submitLogin() {
       this.loading = true
       this.error = ''
-      try {
-        const res = await supabase.from('erp_auth/login', {
-          code: this.form.code,
-          password: this.form.password
-        })
-        const data = res.data
-        localStorage.setItem('access_token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
-        localStorage.setItem('user', JSON.stringify(data.user))
-        this.$router.push('/')
-      } catch (err) {
-        this.error = err.response?.data?.detail || '登入失敗: ' + err.message
-      } finally {
+      
+      // Simulate API call
+      setTimeout(() => {
+        if (this.form.code === 'neal' && this.form.password === 'tur872104') {
+          localStorage.setItem('access_token', 'dummy_token')
+          localStorage.setItem('user', JSON.stringify({ code: 'neal', name: 'Neal' }))
+          this.$router.push('/')
+        } else {
+          this.error = '帳號或密碼錯誤'
+        }
         this.loading = false
-      }
+      }, 500)
     }
   }
 }
