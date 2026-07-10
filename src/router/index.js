@@ -3,6 +3,7 @@ import Dashboard from '../views/Dashboard.vue'
 import Orders from '../views/Orders.vue'
 import Customers from '../views/Customers.vue'
 import Placeholder from '../views/Placeholder.vue'
+import InventoryItems from '../views/InventoryItems.vue'
 
 // Define the routes corresponding to all modules in App.vue
 const routes = [
@@ -30,7 +31,7 @@ const routes = [
   { path: '/inventory', name: 'Inventory_Dashboard', component: Placeholder, meta: { title: '庫存儀表板' } },
   { path: '/inventory/lots', name: 'InventoryLots', component: Placeholder, meta: { title: 'FIFO 批次' } },
   { path: '/inventory/transactions', name: 'InventoryTransactions', component: Placeholder, meta: { title: '異動履歷' } },
-  { path: '/inventory/items', name: 'InventoryItems', component: Placeholder, meta: { title: '商品主檔' } },
+  { path: '/inventory/items', name: 'InventoryItems', component: InventoryItems, meta: { title: '商品主檔' } },
   
   // 採購
   { path: '/procurement/vendors', name: 'Vendors', component: Placeholder, meta: { title: '廠商主檔' } },
