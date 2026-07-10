@@ -279,8 +279,17 @@ export default {
       console.error(e)
     }
 
-    const userName = computed(() => currentUser.value ? currentUser.value.name : 'Neal')
-    const userAvatar = computed(() => currentUser.value ? currentUser.value.name.charAt(0).toUpperCase() : 'N')
+    const userName = computed(() => {
+      if (currentUser.value && currentUser.value.name) return currentUser.value.name
+      if (currentUser.value && currentUser.value.username) return currentUser.value.username
+      if (currentUser.value && currentUser.value.code) return currentUser.value.code
+      return 'Neal'
+    })
+    
+    const userAvatar = computed(() => {
+      const name = userName.value
+      return name ? name.charAt(0).toUpperCase() : 'N'
+    })
 
     // Toggle functions
     const toggleGroup = (group) => {

@@ -6,6 +6,14 @@ import './style.css'
 
 const app = createApp(App)
 
+// Global dummy apiClient to prevent crashes in unmigrated modules
+window.apiClient = {
+  get: async () => ({ data: [] }),
+  post: async () => ({ data: [] }),
+  put: async () => ({ data: [] }),
+  delete: async () => ({ data: [] })
+}
+
 app.use(createPinia())
 app.use(router)
 
