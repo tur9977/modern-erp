@@ -178,6 +178,8 @@
 </template>
 
 <script>
+import { supabase } from '../supabase'
+
 export default {
   name: 'Customers',
   data() {
@@ -227,7 +229,6 @@ export default {
       }
     },
     'form.type'() {
-      // 當類型改變且是非編輯狀態時，自動重新產生代號
       if (!this.isEditing && this.showForm) {
         this.generateCode()
       }
@@ -254,24 +255,27 @@ export default {
     },
     async fetchCustomers() {
       try {
-        const res = await this.$api.get('/customers/')
-        this.customers = res.data
+        const { data, error } = await supabase.from('erp_customers').select('*').order('created_at', { ascending: false })
+        if (error) throw error
+        this.customers = data || []
       } catch (err) {
         console.error('Failed to load customers:', err)
       }
     },
     async fetchChannels() {
       try {
-        const res = await this.$api.get('/channels/')
-        this.channels = res.data
+        const { data, error } = await supabase.from('erp_channels').select('*')
+        if (error) throw error
+        this.channels = data || []
       } catch (err) {
         console.error('Failed to load channels:', err)
       }
     },
     async fetchTiers() {
       try {
-        const res = await this.$api.get('/member-tiers/')
-        this.tiers = res.data
+        const { data, error } = await supabase.from('erp_member_tiers').select('*')
+        if (error) throw error
+        this.tiers = data || []
       } catch (err) {
         console.error('Failed to load member tiers:', err)
       }
@@ -295,13 +299,11 @@ export default {
       return map[type] || 'badge-info'
     },
     onTypeChanged() {
-      // 觸發自動取號
       if (!this.isEditing) {
         this.generateCode()
       }
     },
     generateCode() {
-      // 根據類型自動產生 C 或 T 開頭的下一個號碼
       const prefix = this.form.type === 'RETAIL' ? 'C' : 'T'
       const samePrefix = this.customers.filter(c => c.code && c.code.startsWith(prefix))
       let maxNum = 0
@@ -318,7 +320,6 @@ export default {
       } else {
         this.isEditing = false
         this.form = this.getEmptyForm()
-        // 自動取號（根據類型 C 或 T 開頭）
         this.generateCode()
       }
       this.showForm = true
@@ -331,32 +332,43 @@ export default {
         alert('請填寫代號和姓名')
         return
       }
-      const url = this.isEditing
-        ? `/customers/${this.form.id}`
-        : '/customers/'
-      const method = this.isEditing ? 'put' : 'post'
+      
+      const payload = { ...this.form }
+      for (const key of Object.keys(payload)) {
+        if (payload[key] === '') payload[key] = null
+      }
+      
       try {
-        const res = await this.$api[method](url, this.form)
-        alert(this.isEditing ? '更新成功！' : '新增成功！')
+        if (this.isEditing) {
+          const { error } = await supabase.from('erp_customers').update(payload).eq('id', payload.id)
+          if (error) throw error
+          alert('更新成功！')
+        } else {
+          const { error } = await supabase.from('erp_customers').insert([payload])
+          if (error) throw error
+          alert('新增成功！')
+        }
         this.closeForm()
         this.fetchCustomers()
       } catch (err) {
-        alert('儲存失敗: ' + (err.response?.data?.detail || err.message))
+        alert('儲存失敗: ' + err.message)
       }
     },
     async deleteCustomer(customer) {
       if (!confirm(`確定要刪除會員 ${customer.name} (${customer.code})？`)) return
       try {
-        await this.$api.delete(`/customers/${customer.id}`)
+        const { error } = await supabase.from('erp_customers').delete().eq('id', customer.id)
+        if (error) throw error
         alert('刪除成功')
         this.fetchCustomers()
       } catch (err) {
-        alert('刪除失敗: ' + (err.response?.data?.detail || err.message))
+        alert('刪除失敗: ' + err.message)
       }
     }
   }
 }
 </script>
+
 
 <style scoped>
 .btn-link {
